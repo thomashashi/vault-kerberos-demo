@@ -1,5 +1,10 @@
 # Vault Kerberos Authentication Demo
 
+## Caveat
+
+While this repository was developed by an employee of HashiCorp, Inc. during the course
+of their work, it is not an official product of HashiCorp, nor is it officially supported.
+
 ## Background
 
 This repository contains a [Vagrant](https://vagrant.io) setup to demonstrate
