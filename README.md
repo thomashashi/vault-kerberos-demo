@@ -89,6 +89,16 @@ credentials mentioned below are in the `vagrant` user's home directory on the
    first login `VAULT_TOKEN` is set to the same value, but this allows you to easily
    switch back and forth between Vault tokens
 
+### LDAP Weirdness
+
+There's an outstanding feature request in the Vault Kerberos authentication plugin -
+hashicorp/vault-plugin-auth-kerberos/#44 - to resolve an issue where the plugin
+mandates a setting that essentially forces it into thinking you are using Active
+Directory as your LDAP server, and that you have an attribute `userPrincipalName`
+set to the user's Kerberos principal name. That's not the case unless you're using
+Active Directory or Samba. To get around that, this demo fakes such an entry
+in the user entries.
+
 ### Useful commands
 1. `ldapsearch -x -b ou=Users,dc=example,dc=local uid=vagrant` - Examine the `vagrant`
    user LDAP entry
