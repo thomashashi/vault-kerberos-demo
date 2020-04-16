@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+# Install key for vagrant user so we can shove stuff around between
+# boxes in this demo
+
+install -o vagrant -g vagrant -m 400 /vagrant/files/vagrant_ed25519 /home/vagrant/.ssh/id_ed25519
+install -o vagrant -g vagrant -m 400 /vagrant/files/vagrant_ed25519.pub /home/vagrant/.ssh/id_ed25519.pub
+install -o vagrant -g vagrant -m 400 /vagrant/files/ssh_config /home/vagrant/.ssh/config
+cat /home/vagrant/.ssh/id_ed25519.pub >> /home/vagrant/.ssh/authorized_keys

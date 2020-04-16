@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+import kerberos
+import requests
+
+service = "vault/vault.example.local"
+rc, vc = kerberos.authGSSClientInit(service=service, mech_oid=kerberos.GSS_MECH_OID_SPNEGO)
+kerberos.authGSSClientStep(vc, "")
+kerberos_token = kerberos.authGSSClientResponse(vc)
+
+r = requests.post("http://127.0.0.1:8200/v1/auth/kerberos/login",
+                  headers={"Authorization": 'Negotiate ' + kerberos_token})
+print(r.text)

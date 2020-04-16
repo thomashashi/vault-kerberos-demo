@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+sudo apt update
+sudo DEBIAN_FRONTEND=noninteractive apt install -y less vim-nox jq curl strace lsof krb5-user pwgen ldap-utils screen isc-dhcp-dev
+sudo install -o vagrant -g vagrant -m 400 /vagrant/files/bashrc /home/vagrant/.bashrc

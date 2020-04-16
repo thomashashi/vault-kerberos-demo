@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+sudo DEBIAN_FRONTEND=noninteractive apt install -y avahi-daemon libnss-mdns avahi-utils
+
+sudo install -o root -g root -m 444 /vagrant/files/avahi-daemon.conf /etc/avahi/avahi-daemon.conf
+sudo install -o root -g root -m 444 /vagrant/files/mdns.allow /etc/mdns.allow
+sudo sed -i 's/^hosts: .*/hosts: files mdns4 dns/' /etc/nsswitch.conf
+
+sudo systemctl restart avahi-daemon

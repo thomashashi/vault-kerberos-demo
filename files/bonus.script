@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+runcommand() {
+    msg=$1
+    shift
+    clear
+
+    echo ${msg}
+    echo
+    indent=0
+    for word in $@; do
+        if [ $indent -eq 1 ]; then
+            /bin/echo "    $word"
+        else
+            /bin/echo "$word"
+            indent=1
+        fi
+    done
+    echo
+
+    $@
+
+    echo
+    echo
+    echo
+}
+
+pause() {
+    echo $@
+    read
+    echo
+    echo
+}
+
+runcommand "See that user vagrant has no credentials" klist -eaf
+
+pause ""
+
+runcommand "Authenticate as user vagrant" kinit -kt vagrant.keytab vagrant
+
+pause ""
+
+runcommand "View user vagrant's credentials cache" klist -eaf
+
+pause ""
+
+runcommand "Example ccache-auth script" cat ccache-auth
+
+pause ""
+
+echo "And authenticate"
+echo
+
+clear
+./ccache-auth > .ccache-auth.out
+jq . .ccache-auth.out
+
+pause ""
+
+runcommand "See user's credentials cache now" klist -eaf

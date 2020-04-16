@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+sudo DEBIAN_FRONTEND=noninteractive apt install -y krb5-kdc pwgen krb5-admin-server
+
+sudo install -o root -g root -m 444 /vagrant/files/krb5.conf /etc/krb5.conf
+sudo install -o root -g root -m 400 /vagrant/files/kdc.conf /etc/krb5kdc/kdc.conf
+sudo install -o root -g root -m 400 /vagrant/files/kadm5.acl /etc/krb5kdc/kadm5.acl
+
+# Master key
+pwgen 64 1 | sudo tee /var/lib/krb5kdc/.master.key
+MK=$(sudo cat /var/lib/krb5kdc/.master.key)
+
+# Initialize KDC database
+sudo kdb5_util create -r EXAMPLE.LOCAL -s -P $MK
+
+# Make admin/admin@EXAMPLE.LOCAL principal
+pwgen 64 1 > /home/vagrant/.admin.admin.pwd
+AAPW=$(cat /home/vagrant/.admin.admin.pwd)
+sudo kadmin.local addprinc -pw $AAPW admin/admin
+sudo systemctl restart krb5-kdc
+sudo systemctl restart krb5-admin-server
+
+echo
+echo
+echo "**********************************************************************"
+echo "**********************************************************************"
+echo "**                                                                  **"
+echo "** admin/admin@EXAMPLE.LOCAL password is:                           **"
+echo "** `cat /home/vagrant/.admin.admin.pwd` **"
+echo "**                                                                  **"
+echo "**********************************************************************"
+echo "**********************************************************************"
+echo
+echo
+
+

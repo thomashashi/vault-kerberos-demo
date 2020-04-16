@@ -1,0 +1,3 @@
+dn: ou=Users,dc=example,dc=local
+objectClass: organizationalUnit
+ou: Users

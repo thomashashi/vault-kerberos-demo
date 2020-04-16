@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+runcommand() {
+    msg=$1
+    shift
+    clear
+
+    echo ${msg}
+    echo
+    indent=0
+    for word in $@; do
+        if [ $indent -eq 1 ]; then
+            /bin/echo "    $word"
+        else
+            /bin/echo "$word"
+            indent=1
+        fi
+    done
+    echo
+
+    $@
+
+    echo
+    echo
+    echo
+}
+
+pause() {
+    echo $@
+    read
+    echo
+    echo
+}
+
+runcommand "Enabling kerberos auth method" vault auth enable \
+    -passthrough-request-headers=Authorization \
+    -allowed-response-headers=www-authenticate \
+    kerberos
+
+pause ""
+
+runcommand "Examine vault.keytab" klist -kt /home/vagrant/vault.keytab
+
+pause ""
+
+runcommand "Base64 encode Vault keytab" openssl base64 -in vault.keytab -out vault.keytab.base64
+
+pause ""
+
+runcommand "Configure kerberos authentication method" vault write auth/kerberos/config \
+    keytab=@vault.keytab.base64 \
+    service_account="vault/vault.example.local"
+
+pause ""
+
+runcommand "Configure kerberos ldap settings" vault write auth/kerberos/config/ldap \
+    binddn="uid=vault,ou=Users,dc=example,dc=local" \
+    bindpass="$(cat /home/vagrant/vault.ldap.passwd)" \
+    groupattr="cn" \
+    groupdn="ou=Groups,dc=example,dc=local" \
+    groupfilter="(memberUid={{.Username}})" \
+    userdn="ou=Users,dc=example,dc=local" \
+    userattr="uid" \
+    upndomain="EXAMPLE.LOCAL" \
+    discoverdn=true \
+    url=ldap://ldap.example.local
+
+pause ""
+
+runcommand "Assign ldap group 'devs' the 'devs' policy in Vault" vault write auth/kerberos/groups/devs policies=devs
+
+pause ""
+
+runcommand "Example vagrant user keytab" klist -kt /home/vagrant/vagrant.keytab
+
+pause ""
+
+runcommand "Authenticate to Vault using Kerberos" /usr/bin/env VAULT_TOKEN="" vault login -method=kerberos username=vagrant service=vault/vault.example.local realm=EXAMPLE.LOCAL keytab_path=/home/vagrant/vagrant.keytab krb5conf_path=/etc/krb5.conf disable_fast_negotiation=true
+

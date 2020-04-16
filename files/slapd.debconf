@@ -1,0 +1,4 @@
+slapd slapd/password1 password {{ADMIN_PASSWORD}}
+slapd slapd/password2 password {{ADMIN_PASSWORD}}
+slapd slapd/domain string example.local
+slapd shared/organization string ExampleCo

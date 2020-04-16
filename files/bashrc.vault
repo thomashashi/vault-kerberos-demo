@@ -1,0 +1,5 @@
+VAULT_UNSEAL_KEY=$(cat /home/vagrant/.vault.unseal_key)
+VAULT_ROOT_TOKEN=$(cat /home/vagrant/.vault.root_token)
+VAULT_TOKEN=$VAULT_ROOT_TOKEN
+VAULT_ADDR=http://127.0.0.1:8200
+export VAULT_UNSEAL_KEY VAULT_ROOT_TOKEN VAULT_TOKEN VAULT_ADDR

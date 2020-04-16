@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+
+# Borrowing heavily from https://github.com/rgl/ldap-vagrant
+pwgen 64 1 | tr -d '\n' > /home/vagrant/.ldap.admin.passwd
+chown vagrant:vagrant /home/vagrant/.ldap.admin.passwd
+chmod 400 /home/vagrant/.ldap.admin.passwd
+LAPW=$(cat .ldap.admin.passwd )
+sed "s/{{ADMIN_PASSWORD}}/${LAPW}/" /vagrant/files/slapd.debconf | sudo debconf-set-selections
+
+apt install -y slapd ldapscripts
+install -o root -g root -m 444 /vagrant/files/ldap.conf /etc/ldap/ldap.conf
+install -o root -g root -m 400 /etc/ldapscripts/ldapscripts.conf /etc/ldapscripts/ldapscripts.conf.orig # backup
+install -o root -g root -m 400 /vagrant/files/ldapscripts.conf /etc/ldapscripts/ldapscripts.conf
+install -o root -g root -m 400 /vagrant/files/ldapadduser.template /etc/ldapscripts/ldapadduser.template
+
+# Sigh
+# https://github.com/hashicorp/vault-plugin-auth-kerberos/issues/44
+# Fake userPrincipalName with kerberos.schema
+#
+# I can't believe this is the way to add a schema....
+#
+install -o root -g root -m 444 /vagrant/files/kerberos.schema /etc/ldap/schema/kerberos.schema
+cat <<EOF > ,kerberos.conf
+include          /etc/ldap/schema/core.schema
+include          /etc/ldap/schema/cosine.schema
+include          /etc/ldap/schema/nis.schema
+include          /etc/ldap/schema/inetorgperson.schema
+include		 /etc/ldap/schema/kerberos.schema
+EOF
+
+mkdir ,slapd.d
+/usr/sbin/slaptest -f ,kerberos.conf -F ,slapd.d/
+cp -a \,slapd.d/cn\=config/cn\=schema/cn\=\{4\}kerberos.ldif /etc/ldap/slapd.d/cn\=config/cn\=schema/
+chown -R openldap:openldap /etc/ldap/slapd.d/cn\=config/cn\=schema/cn\=\{4\}kerberos.ldif
+rm -rf ,kerberos.conf ,slapd.d/
+systemctl restart slapd
+
+
+# Create people container
+ldapadd -D cn=admin,dc=example,dc=local -y /home/vagrant/.ldap.admin.passwd < /vagrant/files/ou\=Users.ldif
+ldapadd -D cn=admin,dc=example,dc=local -y /home/vagrant/.ldap.admin.passwd < /vagrant/files/ou\=Groups.ldif
+ldapaddgroup devs
+ldapaddgroup services
+
+# By default, ldapadduser 'adds' the user to a group by setting the gidNumber
+# attribute to the gidNumber of the group. This is fine if you're just doing
+# this for NSS stuff, but in order for Vault to find the groups the user
+# is in, you also have to add them to the group entry
+ldapadduser vagrant devs
+ldapaddusertogroup vagrant devs
+ldapadduser vault services
+ldapaddusertogroup vault services
+
+pwgen 24 1 | tr -d '\n' > /home/vagrant/.vagrant.ldap.passwd
+chmod 400 /home/vagrant/.vagrant.ldap.passwd
+chown vagrant:vagrant /home/vagrant/.vagrant.ldap.passwd
+ldappasswd -T /home/vagrant/.vagrant.ldap.passwd \
+    -x -D cn=admin,dc=example,dc=local \
+    -y /home/vagrant/.ldap.admin.passwd \
+    uid=vagrant,ou=Users,dc=example,dc=local
+    
+pwgen 24 1 | tr -d '\n' > /home/vagrant/.vault.ldap.passwd
+chmod 400 /home/vagrant/.vault.ldap.passwd
+chown vagrant:vagrant /home/vagrant/.vault.ldap.passwd
+ldappasswd -T /home/vagrant/.vault.ldap.passwd \
+    -x -D cn=admin,dc=example,dc=local \
+    -y /home/vagrant/.ldap.admin.passwd \
+    uid=vault,ou=Users,dc=example,dc=local

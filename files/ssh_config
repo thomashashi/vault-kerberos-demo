@@ -1,0 +1,2 @@
+Host *.example.local
+ StrictHostKeyChecking no

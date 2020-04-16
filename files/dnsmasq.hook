@@ -1,0 +1,14 @@
+#!/bin/sh
+
+RESOLV=/etc/resolv.conf.dhclient
+
+make_resolv_conf() {
+  if [ -n "$new_domain_name_servers" ]; then
+    /bin/rm -f $RESOLV
+    echo search example.local >> $RESOLV
+    for nameserver in $new_domain_name_servers; do
+      echo nameserver $nameserver >> $RESOLV
+    done
+  fi
+}
+

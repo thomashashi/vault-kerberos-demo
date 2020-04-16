@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+
+VAULT_VERSION=1.4.0
+VAULT_ARCH=linux_amd64
+VAULT_URI=https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_${VAULT_ARCH}.zip
+
+curl -so /tmp/vault.zip $VAULT_URI
+unzip -d /tmp /tmp/vault.zip
+sudo install -o root -g staff -m 555 /tmp/vault /usr/local/bin/vault
+rm -f /tmp/vault.zip /tmp/vault
+sudo setcap cap_ipc_lock=+ep /usr/local/bin/vault
+sudo useradd -c "Vault Service" -d /srv/vault -m vault
+sudo gpasswd -a vagrant vault
+sudo install -o vault -g vault -m 2770 -d /srv/vault/data /srv/vault/conf
+sudo install -o vault -g vault -m 400 /vagrant/files/vault.hcl /srv/vault/conf/vault.hcl
+
+
+sudo install -o root -g root -m 444 /vagrant/files/vault.service /etc/systemd/system/vault.service
+sudo systemctl daemon-reload
+sudo systemctl enable vault.service
+sudo systemctl start vault.service
+sleep 5
+
+# Init and store keys
+echo '{"secret_shares": 1, "secret_threshold": 1}' > /tmp/vault.request
+curl -s --request PUT --data @/tmp/vault.request -o /tmp/vault.output  http://127.0.0.1:8200/v1/sys/init 
+jq -r '.keys_base64[0]' /tmp/vault.output > /home/vagrant/.vault.unseal_key
+jq -r '.root_token' /tmp/vault.output > /home/vagrant/.vault.root_token
+rm -f /tmp/vault.request /tmp/vault.output
+chown vagrant:vagrant /home/vagrant/.vault.unseal_key /home/vagrant/.vault.root_token
+chmod 400 /home/vagrant/.vault.unseal_key /home/vagrant/.vault.root_token
+install -o vagrant -g vagrant -m 500 /vagrant/files/bashrc.vault /home/vagrant/.bashrc.vault
+
+# Unseal the Vault
+echo "{\"key\": \"$(cat /home/vagrant/.vault.unseal_key)\"}" > /tmp/.vault.unseal
+curl -s --request PUT --data @/tmp/.vault.unseal http://127.0.0.1:8200/v1/sys/unseal
+rm -f /tmp/.vault.unseal
+
+# Bonus python
+DEBIAN_FRONTEND=noninteractive apt install -y python-kerberos \
+    python-requests-kerberos \
+    python-requests \
+    python-gssapi \
+    libgssapi-krb5-2
+install -o vagrant -g vagrant -m 555 /vagrant/files/ccache-auth /home/vagrant/ccache-auth
+install -o vagrant -g vagrant -m 555 /vagrant/files/bonus.script /home/vagrant/run-bonus
+
+# Fake DNS: we're using mDNS and NSS to look up hosts, because I don't want to hard
+# code anything other than you using a private network in Virtual box - no hardcoding
+# addresses. The Vault Kerberos plugin, however, when it tries to contact the KDC or
+# the LDAP server, doesn't use the host NSS configuration, it just does DNS resolution.
+# Since there's no dnsmasq plugin to dump into mDNS, we fake it by discovering the
+# addresses, putting them in /etc/hosts, and starting up dnsmasq
+
+DEBIAN_FRONTEND=noninteractive apt install -y dnsmasq
+install -o root -g root -m 555 /vagrant/files/dnsmasq.hook /etc/dhcp/dhclient-enter-hooks.d/dnsmasq
+install -o root -g root -m 444 /vagrant/files/resolv.conf /etc/resolv.conf
+install -o root -g root -m 444 /vagrant/files/dnsmasq.conf /etc/dnsmasq.conf
+
+getent hosts kdc.example.local | sudo tee -a /etc/hosts
+getent hosts ldap.example.local | sudo tee -a /etc/hosts
+
+# Have to restart the eth0 interface to restart dhclient in a way that
+# causes it to write a the resolv.conf dnsmasq will use
+ifdown eth0
+ifup eth0
+
+systemctl enable dnsmasq
+systemctl restart dnsmasq
+
+
+# Wait until KDC is up and get admin/admin@EXAMPLE.LOCAL
+echo "Getting admin/admin@EXAMPLE.LOCAL credentials"
+RC=1
+while [ $RC -ne 0 ]; do
+    scp -o "ConnectTimeout 2" -o "StrictHostKeyChecking no" \
+	-i /home/vagrant/.ssh/id_ed25519 \
+	vagrant@kdc.example.local:.admin.admin.pwd /tmp/.admin.admin.pwd >/dev/null 2>&1
+    RC=$?
+done
+
+install -o vagrant -g vagrant -m 400 /tmp/.admin.admin.pwd /home/vagrant/.admin.admin.pwd
+rm -f /tmp/.admin.admin.pwd
+
+# Configure kerberos clients
+sudo install -o root -g root -m 444 /vagrant/files/krb5.conf /etc/krb5.conf
+
+# Generate keytabs needed for Vault Kerberos authentication demo
+APW=$(cat /home/vagrant/.admin.admin.pwd )
+kadmin -p admin/admin@EXAMPLE.LOCAL -w $APW ank -randkey vagrant@EXAMPLE.LOCAL
+kadmin -p admin/admin@EXAMPLE.LOCAL -w $APW ank -randkey vault/vault.example.local@EXAMPLE.LOCAL
+kadmin -p admin/admin@EXAMPLE.LOCAL -w $APW ktadd -k /home/vagrant/vagrant.keytab vagrant@EXAMPLE.LOCAL
+kadmin -p admin/admin@EXAMPLE.LOCAL -w $APW ktadd -k /home/vagrant/vault.keytab vault/vault.example.local@EXAMPLE.LOCAL
+chmod 400 *.keytab
+chown vagrant:vagrant *.keytab
+
+
+# Wait until ldap is up and get vagrant and vault creds
+for user in vagrant vault; do
+    echo "Getting ldap credentials for ${user}"
+    RC=1
+    while [ $RC -ne 0 ]; do
+	scp -o "ConnectTimeout 2" -o "StrictHostKeyChecking no" \
+	    -i /home/vagrant/.ssh/id_ed25519 \
+	    vagrant@ldap.example.local:.${user}.ldap.passwd /tmp/${user}.ldap.passwd 
+	RC=$?
+    done
+    install -o vagrant -g vagrant -m 400 /tmp/${user}.ldap.passwd /home/vagrant/${user}.ldap.passwd
+    rm -f /tmp/${user}.ldap.passwd
+done
+
+sudo install -o root -g root -m 444 /vagrant/files/ldap.conf /etc/ldap/ldap.conf
+
+# Install demo script
+sudo install -o vagrant -g vagrant -m 555 /vagrant/files/demo.script /home/vagrant/run-demo
+
